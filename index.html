@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: https://fonts.googleapis.com https://fonts.gstatic.com https://api.unsplash.com https://pixabay.com https://generativelanguage.googleapis.com http://localhost:7860; img-src 'self' data: https:; font-src https://fonts.gstatic.com;" />
+  <title>PixelForge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="logo">PIXEL<span>FORGE</span></h1>
+    <div class="mode-switch" id="modeSwitch">
+      <button class="mode-btn active" data-mode="sd">Stable Diffusion</button>
+      <button class="mode-btn" data-mode="gemini">Gemini</button>
+    </div>
+  </header>
+
+  <main class="app-body">
+    <!-- LEFT PANEL -->
+    <section class="panel panel-left">
+      <div class="field" id="sdServerField">
+        <label>Адрес Stable Diffusion</label>
+        <div class="server-row">
+          <input type="text" id="sdServerUrl" placeholder="http://localhost:7860" />
+          <button class="btn-secondary small" id="checkConnectionBtn" type="button">Проверить</button>
+        </div>
+        <div class="connection-status" id="connectionStatus">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Не проверено</span>
+        </div>
+        <div class="field-hint">Если Stable Diffusion на другом компьютере в сети — впишите его IP, например http://192.168.1.50:7860</div>
+      </div>
+
+      <div class="field" id="geminiKeyField" style="display:none">
+        <label>Gemini API ключ</label>
+        <input type="password" id="geminiApiKey" placeholder="AIza..." />
+      </div>
+
+      <div class="field">
+        <label>Описание спрайта</label>
+        <textarea id="description" rows="5" placeholder="дерево дуб осенью, вид сбоку"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Размер спрайта</label>
+        <div class="chip-group" id="sizeGroup">
+          <button class="chip" data-value="16">16x16</button>
+          <button class="chip active" data-value="32">32x32</button>
+          <button class="chip" data-value="48">48x48</button>
+          <button class="chip" data-value="64">64x64</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Стиль</label>
+        <select id="style">
+          <option value="RPG">RPG</option>
+          <option value="Платформер">Платформер</option>
+          <option value="Топ-даун">Топ-даун</option>
+          <option value="Ретро NES">Ретро NES</option>
+          <option value="Минимал">Минимал</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Палитра</label>
+        <select id="palette">
+          <option value="Полная">Полная</option>
+          <option value="Лес">Лес</option>
+          <option value="Закат">Закат</option>
+          <option value="Подземелье">Подземелье</option>
+          <option value="NES">NES</option>
+          <option value="GameBoy">GameBoy</option>
+        </select>
+      </div>
+
+      <button class="btn-generate" id="generateBtn">
+        СГЕНЕРИРОВАТЬ
+        <span class="hint">Ctrl+Enter</span>
+      </button>
+
+      <div class="status" id="status"></div>
+    </section>
+
+    <!-- CENTER PANEL -->
+    <section class="panel panel-center">
+      <div class="canvas-toolbar">
+        <div class="zoom-group" id="zoomGroup">
+          <button class="chip" data-zoom="1">1x</button>
+          <button class="chip active" data-zoom="2">2x</button>
+          <button class="chip" data-zoom="4">4x</button>
+          <button class="chip" data-zoom="8">8x</button>
+          <button class="chip" data-zoom="16">16x</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <div class="canvas-stage" id="canvasStage">
+          <div class="canvas-placeholder" id="canvasPlaceholder">Здесь появится ваш спрайт</div>
+          <img id="resultImage" class="result-image pixelated" style="display:none" />
+        </div>
+      </div>
+
+      <div class="result-actions">
+        <button class="btn-secondary" id="downloadPngBtn" disabled>Скачать PNG (512x512)</button>
+        <button class="btn-secondary" id="downloadSvgBtn" disabled>Скачать SVG</button>
+        <button class="btn-secondary" id="copyCodeBtn" disabled>Копировать код</button>
+      </div>
+
+      <div class="history">
+        <h3>История</h3>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL -->
+    <section class="panel panel-right">
+      <div class="ref-header">
+        <h3>Референсы</h3>
+        <button class="btn-secondary small" id="refreshRefsBtn">Обновить референсы</button>
+      </div>
+
+      <div class="field ref-key-field">
+        <label>Unsplash API ключ (бесплатный)</label>
+        <input type="password" id="unsplashApiKey" placeholder="Access Key" />
+      </div>
+
+      <div class="ref-grid" id="refGrid"></div>
+    </section>
+  </main>
+
+  <div class="modal" id="refModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <img id="refModalImage" />
+      <button class="modal-close" id="refModalClose">×</button>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

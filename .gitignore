@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.sd-setup.env
+.DS_Store

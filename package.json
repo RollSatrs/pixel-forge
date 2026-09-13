@@ -1,0 +1,43 @@
+{
+  "name": "pixel-forge",
+  "version": "1.0.0",
+  "description": "Генератор пиксельных спрайтов для 2D игр (Stable Diffusion + Gemini)",
+  "main": "main.js",
+  "author": "Rollan",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder -mw",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "build": {
+    "appId": "com.rollan.pixelforge",
+    "productName": "PixelForge",
+    "files": [
+      "main.js",
+      "index.html",
+      "styles.css",
+      "renderer.js",
+      "preload.js",
+      "assets/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.graphics-design",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
