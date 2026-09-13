@@ -110,6 +110,30 @@ npm install
 
 9. **Настройте Windows Firewall**, если подключение с другого устройства не проходит: Панель управления → Windows Defender Firewall → Дополнительные параметры → Правила для входящих подключений → создать правило для порта **TCP 7860** (разрешить).
 
+### Известная проблема: `Stability-AI/stablediffusion.git` не найден (404)
+
+Это баг самого AUTOMATIC1111, не нашего проекта: Stability AI удалили/скрыли репозиторий, который webui клонирует внутри себя при первой установке. Подтверждено в issue [#17204](https://github.com/AUTOMATIC1111/stable-diffusion-webui/issues/17204) и обсуждении [#17212](https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17212).
+
+**Скрипт-мастер (`scripts/setup-stable-diffusion.sh`) чинит это автоматически** — правит `modules/launch_utils.py`, чтобы использовать рабочее зеркало `w-e-w/stablediffusion`, и следит, чтобы стоял именно Python 3.10 (а не более новый), для которого у `torch==2.1.2` есть готовые сборки.
+
+Если вы уже успели что-то сломать вручную (например, поменяли `torch==2.1.2` на `2.9.0` в `requirements_versions.txt`, пытаясь обойти ошибку) — **откатите эти правки** (`git checkout requirements_versions.txt` в папке webui) и вместо этого:
+
+1. Убедитесь, что установлен именно Python 3.10.x (не 3.11+, не 3.14) — `py -3.10 --version` в PowerShell.
+2. В `webui-user.bat` добавьте строку с точным путём к 3.10, например:
+   ```bat
+   set PYTHON=C:\Users\ВЫ\AppData\Local\Programs\Python\Python310\python.exe
+   ```
+3. В `modules/launch_utils.py` замените:
+   ```python
+   "https://github.com/Stability-AI/stablediffusion.git"
+   ```
+   на:
+   ```python
+   "https://github.com/w-e-w/stablediffusion.git"
+   ```
+4. Удалите папки `repositories\stable-diffusion-stability-ai` и `venv` внутри `stable-diffusion-webui` (чтобы всё пересобралось с нуля с правильным Python и torch).
+5. Запустите `webui-user.bat` заново.
+
 ### Как подключить PixelForge к Windows по сети
 
 В левой панели PixelForge есть поле **"Адрес Stable Diffusion"**:
@@ -135,7 +159,8 @@ npm install
    ```bash
    bash scripts/setup-stable-diffusion.sh
    ```
-4. Следуйте подсказкам на экране — мастер сам скажет что скачать, где кликнуть и что скопировать, и в конце протестирует генерацию прямо в PixelForge.
+4. Первым делом мастер спросит язык — **[1] Русский** или **[2] English** (по умолчанию русский, просто нажмите Enter). Весь дальнейший текст в терминале будет на выбранном языке.
+5. Следуйте подсказкам на экране — мастер сам скажет что скачать, где кликнуть и что скопировать, автоматически исправит известные проблемы совместимости AUTOMATIC1111 (см. ниже), и в конце протестирует генерацию прямо в PixelForge.
 
 Скрипт можно останавливать в любой момент (`Ctrl+C`) и запускать заново — он помнит уже введённые значения (файл `.sd-setup.env` в папке проекта).
 

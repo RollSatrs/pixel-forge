@@ -162,70 +162,118 @@ finish() {
 # STAGES
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=7
+TOTAL_STAGES=8
 ENV_FILE=".sd-setup.env"
 
-banner "AUTOMATIC1111 (Stable Diffusion) setup for PixelForge — Windows + RTX 3060"
+# LANG_CHOICE: "ru" or "en". t RU EN prints the right one for say/step/etc.
+LANG_CHOICE="${LANG_CHOICE:-}"
+if [[ -z "$LANG_CHOICE" ]]; then
+  LANG_CHOICE=$(_existing LANG_CHOICE || true)
+fi
+if [[ -z "$LANG_CHOICE" ]]; then
+  printf '\n  Choose language / Выберите язык:\n'
+  printf '   [1] Русский (default)\n'
+  printf '   [2] English\n'
+  printf '  > '
+  read -r _lang_reply || true
+  case "$_lang_reply" in
+    2) LANG_CHOICE="en" ;;
+    *) LANG_CHOICE="ru" ;;
+  esac
+fi
+write_env LANG_CHOICE "$LANG_CHOICE"
+
+t() {
+  if [[ "$LANG_CHOICE" == "en" ]]; then printf '%s' "$2"; else printf '%s' "$1"; fi
+}
+
+banner "$(t "Настройка AUTOMATIC1111 (Stable Diffusion) для PixelForge — Windows + RTX 3060" \
+            "AUTOMATIC1111 (Stable Diffusion) setup for PixelForge — Windows + RTX 3060")"
 
 # ── Stage 1: Python 3.10 ──────────────────────────────────────────────────
-stage "Python 3.10"
-say "AUTOMATIC1111 needs Python 3.10.x specifically (not 3.11+)."
-if command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "3.10"; then
-  step "Found: $(python --version 2>&1)"
+stage "$(t "Python 3.10 (точная версия — не 3.11, не 3.14)" "Python 3.10 (exact version — not 3.11, not 3.14)")"
+say "$(t "AUTOMATIC1111 требует torch==2.1.2, а готовые сборки (wheels) для него есть только под Python 3.10." \
+         "AUTOMATIC1111 pins torch==2.1.2, which only has installable wheels for Python 3.10.")"
+say "$(t "Более новый Python (3.11, 3.12, 3.14...) не сможет установить torch, либо подтянет несовместимую пару torch/torchvision — именно это вызывало ваши прошлые ошибки." \
+         "Newer Python (3.11, 3.12, 3.14...) will fail to install torch, or silently pull an incompatible torch/torchvision pair — that's what caused your earlier errors.")"
+warn "$(t "Если 'python' или 'py' на этом ПК уже указывает на 3.11+/3.14 — НЕ удаляйте его, от него могут зависеть другие программы." \
+          "If 'python' or 'py' on this PC already points at 3.11+/3.14, DO NOT uninstall it — other tools may depend on it.")"
+note "$(t "Мы поставим 3.10 рядом и укажем AUTOMATIC1111 использовать именно её." \
+          "We'll install 3.10 side-by-side and point AUTOMATIC1111 at it directly.")"
+
+PYTHON_310=""
+if command -v py >/dev/null 2>&1 && py -3.10 --version >/dev/null 2>&1; then
+  PYTHON_310=$(py -3.10 -c "import sys; print(sys.executable)" 2>/dev/null | tr -d '\r')
+fi
+
+if [[ -n "$PYTHON_310" ]]; then
+  step "$(t "Найден Python 3.10: $PYTHON_310" "Found Python 3.10 at: $PYTHON_310")"
 else
   open_url "https://www.python.org/downloads/release/python-31011/"
-  step "Download 'Windows installer (64-bit)' at the bottom of the page."
-  step "Run it. IMPORTANT: tick 'Add python.exe to PATH' on the first screen."
-  pause "Installed? Press Enter to verify."
-  if python --version 2>&1 | grep -q "3.10"; then
-    step "Verified: $(python --version 2>&1)"
+  step "$(t "Скачайте 'Windows installer (64-bit)' внизу страницы." "Download 'Windows installer (64-bit)' at the bottom of the page.")"
+  step "$(t "Запустите его. Отметьте 'Add python.exe to PATH' — существующую версию Python удалять не нужно." \
+            "Run it. Tick 'Add python.exe to PATH' — it's fine to also keep any existing Python version.")"
+  pause "$(t "Установили? Нажмите Enter для проверки." "Installed? Press Enter to verify.")"
+  if command -v py >/dev/null 2>&1 && py -3.10 --version >/dev/null 2>&1; then
+    PYTHON_310=$(py -3.10 -c "import sys; print(sys.executable)" 2>/dev/null | tr -d '\r')
+    step "$(t "Проверено: $PYTHON_310" "Verified: $PYTHON_310")"
   else
-    warn "python --version didn't report 3.10.x — open a NEW terminal window (PATH refresh) and re-run this wizard."
+    warn "$(t "Python 3.10 всё ещё не найден через launcher 'py'. Откройте НОВОЕ окно терминала (чтобы обновился PATH) и запустите мастер заново." \
+              "Still can't find Python 3.10 via the 'py' launcher. Open a NEW terminal window (PATH refresh) and re-run this wizard.")"
+    ask PYTHON_310 "$(t "Или вставьте полный путь к python.exe из установки 3.10 (можно оставить пустым и исправить позже):" \
+                        "Or paste the full path to python.exe from the 3.10 install directly (leave empty to fix later):")"
   fi
 fi
+write_env PYTHON_310 "$PYTHON_310"
 
 # ── Stage 2: Git ───────────────────────────────────────────────────────────
 stage "Git"
 if command -v git >/dev/null 2>&1; then
-  step "Found: $(git --version)"
+  step "$(t "Найден: $(git --version)" "Found: $(git --version)")"
 else
   open_url "https://git-scm.com/download/win"
-  step "Download and run the 64-bit installer, defaults are fine."
-  pause "Installed? Press Enter to verify."
+  step "$(t "Скачайте и запустите 64-битный установщик, настройки по умолчанию подходят." \
+            "Download and run the 64-bit installer, defaults are fine.")"
+  pause "$(t "Установили? Нажмите Enter для проверки." "Installed? Press Enter to verify.")"
   if command -v git >/dev/null 2>&1; then
-    step "Verified: $(git --version)"
+    step "$(t "Проверено: $(git --version)" "Verified: $(git --version)")"
   else
-    warn "git still not found — open a new terminal and re-run this wizard."
+    warn "$(t "git всё ещё не найден — откройте новый терминал и запустите мастер заново." \
+              "git still not found — open a new terminal and re-run this wizard.")"
   fi
 fi
 
 # ── Stage 3: NVIDIA driver ─────────────────────────────────────────────────
-stage "NVIDIA driver (RTX 3060)"
+stage "$(t "Драйвер NVIDIA (RTX 3060)" "NVIDIA driver (RTX 3060)")"
 if command -v nvidia-smi >/dev/null 2>&1; then
-  say "nvidia-smi output:"
+  say "$(t "Вывод nvidia-smi:" "nvidia-smi output:")"
   nvidia-smi || true
-  confirm "Does the driver version look current (installed in the last ~6 months)?" \
-    && step "Good, driver looks OK." \
-    || { open_url "https://www.nvidia.com/Download/index.aspx"; step "Select RTX 3060, download and install the latest Game Ready or Studio driver, then reboot."; pause "Done?"; }
+  confirm "$(t "Версия драйвера выглядит свежей (обновлялась за последние ~6 месяцев)?" \
+              "Does the driver version look current (installed in the last ~6 months)?")" \
+    && step "$(t "Хорошо, драйвер в порядке." "Good, driver looks OK.")" \
+    || { open_url "https://www.nvidia.com/Download/index.aspx"; step "$(t "Выберите RTX 3060, скачайте и установите последний драйвер Game Ready или Studio, затем перезагрузитесь." "Select RTX 3060, download and install the latest Game Ready or Studio driver, then reboot.")"; pause "$(t "Готово?" "Done?")"; }
 else
-  warn "nvidia-smi not found in this shell (normal for Git Bash — it's not always on PATH)."
+  warn "$(t "nvidia-smi не найден в этой оболочке (обычное дело для Git Bash — она не всегда в PATH)." \
+            "nvidia-smi not found in this shell (normal for Git Bash — it's not always on PATH).")"
   open_url "https://www.nvidia.com/Download/index.aspx"
-  step "Select RTX 3060, download and install the latest driver if you haven't recently, then reboot."
-  pause "Driver installed and up to date? Press Enter to continue."
+  step "$(t "Выберите RTX 3060, скачайте и установите последний драйвер, если давно не обновляли, затем перезагрузитесь." \
+            "Select RTX 3060, download and install the latest driver if you haven't recently, then reboot.")"
+  pause "$(t "Драйвер установлен и обновлён? Нажмите Enter для продолжения." "Driver installed and up to date? Press Enter to continue.")"
 fi
 
 # ── Stage 4: Clone AUTOMATIC1111 + enable API flag ────────────────────────
-stage "Clone AUTOMATIC1111 + enable --api"
-ask SD_INSTALL_DIR "Where should stable-diffusion-webui be cloned? (e.g. C:/Users/you/stable-diffusion-webui, or ~/stable-diffusion-webui in Git Bash):"
+stage "$(t "Клонирование AUTOMATIC1111 и включение --api" "Clone AUTOMATIC1111 + enable --api")"
+ask SD_INSTALL_DIR "$(t "Куда клонировать stable-diffusion-webui? (например C:/Users/вы/stable-diffusion-webui, или ~/stable-diffusion-webui в Git Bash):" \
+                        "Where should stable-diffusion-webui be cloned? (e.g. C:/Users/you/stable-diffusion-webui, or ~/stable-diffusion-webui in Git Bash):")"
 SD_INSTALL_DIR="${SD_INSTALL_DIR/#\~/$HOME}"
 write_env SD_INSTALL_DIR "$SD_INSTALL_DIR"
 
 if [[ -d "$SD_INSTALL_DIR/.git" ]]; then
-  step "Repo already exists at $SD_INSTALL_DIR — skipping clone."
+  step "$(t "Репозиторий уже существует в $SD_INSTALL_DIR — клонирование пропущено." "Repo already exists at $SD_INSTALL_DIR — skipping clone.")"
 else
-  step "Cloning AUTOMATIC1111/stable-diffusion-webui into $SD_INSTALL_DIR ..."
+  step "$(t "Клонирую AUTOMATIC1111/stable-diffusion-webui в $SD_INSTALL_DIR ..." "Cloning AUTOMATIC1111/stable-diffusion-webui into $SD_INSTALL_DIR ...")"
   git clone --quiet https://github.com/AUTOMATIC1111/stable-diffusion-webui.git "$SD_INSTALL_DIR"
-  step "Cloned."
+  step "$(t "Склонировано." "Cloned.")"
 fi
 
 WEBUI_USER_BAT="$SD_INSTALL_DIR/webui-user.bat"
@@ -235,45 +283,93 @@ if [[ -f "$WEBUI_USER_BAT" ]]; then
   else
     printf '\nset COMMANDLINE_ARGS=--api --xformers --listen\n' >> "$WEBUI_USER_BAT"
   fi
-  step "Enabled --api --xformers --listen in webui-user.bat."
-  note "  --api    → PixelForge needs this to talk to the server at all."
-  note "  --listen → makes it answer requests from OTHER devices on your home network,"
-  note "             not just from this Windows PC itself (needed if PixelForge runs elsewhere)."
-  warn "Security note: --listen exposes the server to your whole home network with no login. Fine on a trusted home Wi-Fi; don't do this on a public/office network."
+  step "$(t "Включены --api --xformers --listen в webui-user.bat." "Enabled --api --xformers --listen in webui-user.bat.")"
+  note "$(t "  --api    → без этого PixelForge вообще не сможет обратиться к серверу." "  --api    → PixelForge needs this to talk to the server at all.")"
+  note "$(t "  --listen → сервер начинает отвечать другим устройствам в вашей сети, не только этому ПК (нужно, если PixelForge на другом устройстве)." \
+            "  --listen → makes it answer requests from OTHER devices on your home network, not just from this Windows PC itself (needed if PixelForge runs elsewhere).")"
+  warn "$(t "Осторожно: --listen открывает сервер для всей домашней сети без пароля. Годится для доверенного домашнего Wi-Fi; не делайте так в публичной/офисной сети." \
+            "Security note: --listen exposes the server to your whole home network with no login. Fine on a trusted home Wi-Fi; don't do this on a public/office network.")"
+
+  if [[ -n "${PYTHON_310:-}" ]]; then
+    if grep -q "^set PYTHON=" "$WEBUI_USER_BAT"; then
+      sed -i "s|^set PYTHON=.*|set PYTHON=$PYTHON_310|" "$WEBUI_USER_BAT"
+    else
+      printf '\nset PYTHON=%s\n' "$PYTHON_310" >> "$WEBUI_USER_BAT"
+    fi
+    step "$(t "Закреплён PYTHON=$PYTHON_310 в webui-user.bat (чтобы использовалась именно 3.10, даже если в PATH другая версия)." \
+              "Pinned PYTHON=$PYTHON_310 in webui-user.bat (so it uses 3.10 even if another Python is on PATH).")"
+  fi
 else
-  warn "webui-user.bat not found at $WEBUI_USER_BAT — add 'set COMMANDLINE_ARGS=--api --xformers --listen' to it by hand."
+  warn "$(t "webui-user.bat не найден в $WEBUI_USER_BAT — добавьте туда 'set COMMANDLINE_ARGS=--api --xformers --listen' вручную." \
+            "webui-user.bat not found at $WEBUI_USER_BAT — add 'set COMMANDLINE_ARGS=--api --xformers --listen' to it by hand.")"
 fi
 
+# Known upstream issue (as of early 2026): Stability-AI deleted/hid the
+# Stability-AI/stablediffusion repo that AUTOMATIC1111 clones internally,
+# so a fresh install fails with "Repository not found" on that URL. Point it
+# at the community mirror instead. See:
+# https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17212
+stage "$(t "Фикс: Stability-AI/stablediffusion 404 (известная проблема апстрима)" "Fix: Stability-AI/stablediffusion 404 (known upstream issue)")"
+say "$(t "AUTOMATIC1111 внутри себя клонирует второй репозиторий с кодом модели. Stability-AI удалили его, поэтому первая установка падает с 'Repository not found'." \
+         "AUTOMATIC1111 internally clones a second repo for the model code. Stability-AI took that repo down, so first-time setup fails with 'Repository not found'.")"
+say "$(t "Фикс: указать вместо него рабочее зеркало (w-e-w/stablediffusion)." "Fix: point it at the community mirror (w-e-w/stablediffusion) instead.")"
+
+LAUNCH_UTILS="$SD_INSTALL_DIR/modules/launch_utils.py"
+if [[ -f "$LAUNCH_UTILS" ]] && grep -q "Stability-AI/stablediffusion.git" "$LAUNCH_UTILS"; then
+  sed -i 's#https://github.com/Stability-AI/stablediffusion.git#https://github.com/w-e-w/stablediffusion.git#' "$LAUNCH_UTILS"
+  step "$(t "modules/launch_utils.py пропатчен на рабочее зеркало." "Patched modules/launch_utils.py to use the working mirror.")"
+else
+  note "$(t "launch_utils.py уже пропатчен, либо этому чекауту фикс не нужен (апстрим мог уже починить) — пропускаю." \
+            "launch_utils.py already patched, or this checkout doesn't need it (upstream may have fixed it) — skipping.")"
+fi
+
+BROKEN_REPO_DIR="$SD_INSTALL_DIR/repositories/stable-diffusion-stability-ai"
+if [[ -d "$BROKEN_REPO_DIR" ]]; then
+  step "$(t "Удаляю ранее наполовину склонированную repositories/stable-diffusion-stability-ai, чтобы она переклонировалась чисто." \
+            "Removing a previously half-cloned repositories/stable-diffusion-stability-ai so it re-clones cleanly.")"
+  rm -rf "$BROKEN_REPO_DIR"
+fi
+note "$(t "Если при запуске снова 404 — значит апстрим опять сменил зеркало, проверьте:" \
+          "If this still 404s on launch, it means upstream changed the mirror again — check:")"
+note "  https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17212"
+
 # ── Stage 5: Pixel-art model ───────────────────────────────────────────────
-stage "Pixel-art model"
-say "PixelForge's prompts work with any SD 1.5 checkpoint, but a model fine-tuned"
-say "on pixel art gives much cleaner results."
+stage "$(t "Pixel-art модель" "Pixel-art model")"
+say "$(t "Промпты PixelForge работают с любым чекпоинтом SD 1.5, но модель, дообученная на пиксель-арте, даёт заметно более чистый результат." \
+         "PixelForge's prompts work with any SD 1.5 checkpoint, but a model fine-tuned on pixel art gives much cleaner results.")"
 open_url "https://civitai.com/search/models?query=pixel%20art"
-step "Pick a checkpoint tagged 'pixel art' (e.g. 'All-In-One-Pixel-Model'), download the .safetensors file."
-note "Civitai downloads may require a free account login."
-ask MODEL_FILE "Full path to the downloaded .safetensors file (leave empty to skip and add it later):"
+step "$(t "Выберите чекпоинт с тегом 'pixel art' (например 'All-In-One-Pixel-Model'), скачайте файл .safetensors." \
+          "Pick a checkpoint tagged 'pixel art' (e.g. 'All-In-One-Pixel-Model'), download the .safetensors file.")"
+note "$(t "Для скачивания на Civitai может понадобиться бесплатный аккаунт." "Civitai downloads may require a free account login.")"
+ask MODEL_FILE "$(t "Полный путь к скачанному .safetensors файлу (оставьте пустым, чтобы пропустить и добавить позже):" \
+                    "Full path to the downloaded .safetensors file (leave empty to skip and add it later):")"
 if [[ -n "$MODEL_FILE" ]]; then
   MODEL_FILE="${MODEL_FILE/#\~/$HOME}"
   MODELS_DIR="$SD_INSTALL_DIR/models/Stable-diffusion"
   mkdir -p "$MODELS_DIR"
   if [[ -f "$MODEL_FILE" ]]; then
     cp -v "$MODEL_FILE" "$MODELS_DIR/"
-    step "Copied model into $MODELS_DIR"
+    step "$(t "Модель скопирована в $MODELS_DIR" "Copied model into $MODELS_DIR")"
   else
-    warn "File not found at $MODEL_FILE — copy it into $MODELS_DIR manually."
+    warn "$(t "Файл не найден по пути $MODEL_FILE — скопируйте его в $MODELS_DIR вручную." \
+              "File not found at $MODEL_FILE — copy it into $MODELS_DIR manually.")"
   fi
 else
-  warn "Skipped — copy a .safetensors model into $SD_INSTALL_DIR/models/Stable-diffusion manually before generating."
+  warn "$(t "Пропущено — скопируйте .safetensors модель в $SD_INSTALL_DIR/models/Stable-diffusion вручную перед генерацией." \
+            "Skipped — copy a .safetensors model into $SD_INSTALL_DIR/models/Stable-diffusion manually before generating.")"
 fi
 
 # ── Stage 6: Launch WebUI, find the LAN IP, verify the API ─────────────────
-stage "Launch WebUI, find its network address, verify the API"
-say "webui-user.bat runs in the foreground and must stay running while PixelForge is used."
-step "Open a NEW terminal window (cmd, PowerShell, or Git Bash) and run:"
+stage "$(t "Запуск WebUI, поиск сетевого адреса, проверка API" "Launch WebUI, find its network address, verify the API")"
+say "$(t "webui-user.bat работает на переднем плане и должен оставаться запущенным, пока используется PixelForge." \
+         "webui-user.bat runs in the foreground and must stay running while PixelForge is used.")"
+step "$(t "Откройте НОВОЕ окно терминала (cmd, PowerShell или Git Bash) и выполните:" \
+          "Open a NEW terminal window (cmd, PowerShell, or Git Bash) and run:")"
 note "  cd \"$SD_INSTALL_DIR\" && webui-user.bat"
-step "Wait for the console to print 'Running on local URL: http://0.0.0.0:7860' (note 0.0.0.0 — that's --listen working)."
-note "First launch downloads extra dependencies — can take 10-20 minutes."
-pause "WebUI running? Press Enter to find this PC's network address."
+step "$(t "Дождитесь строки в консоли 'Running on local URL: http://0.0.0.0:7860' (0.0.0.0 означает, что --listen сработал)." \
+          "Wait for the console to print 'Running on local URL: http://0.0.0.0:7860' (note 0.0.0.0 — that's --listen working).")"
+note "$(t "Первый запуск скачивает дополнительные зависимости — может занять 10-20 минут." "First launch downloads extra dependencies — can take 10-20 minutes.")"
+pause "$(t "WebUI запущен? Нажмите Enter, чтобы найти сетевой адрес этого ПК." "WebUI running? Press Enter to find this PC's network address.")"
 
 LAN_IP=""
 if command -v ipconfig.exe >/dev/null 2>&1; then
@@ -284,69 +380,88 @@ elif command -v ipconfig >/dev/null 2>&1; then
 fi
 
 if [[ -n "$LAN_IP" ]]; then
-  step "This PC's local network address: $LAN_IP"
-  note "On the OTHER device (Mac), you'll enter: http://$LAN_IP:7860"
+  step "$(t "Локальный сетевой адрес этого ПК: $LAN_IP" "This PC's local network address: $LAN_IP")"
+  note "$(t "На ДРУГОМ устройстве (Mac) нужно будет ввести: http://$LAN_IP:7860" "On the OTHER device (Mac), you'll enter: http://$LAN_IP:7860")"
   write_env WINDOWS_LAN_IP "$LAN_IP"
 else
-  warn "Couldn't auto-detect the IP. Run 'ipconfig' yourself and look for 'IPv4 Address' under your Wi-Fi/Ethernet adapter — it looks like 192.168.x.x."
-  ask WINDOWS_LAN_IP "Paste that IPv4 address here:"
+  warn "$(t "Не удалось определить IP автоматически. Выполните 'ipconfig' сами и найдите 'IPv4-адрес' под вашим Wi-Fi/Ethernet адаптером — выглядит как 192.168.x.x." \
+            "Couldn't auto-detect the IP. Run 'ipconfig' yourself and look for 'IPv4 Address' under your Wi-Fi/Ethernet adapter — it looks like 192.168.x.x.")"
+  ask WINDOWS_LAN_IP "$(t "Вставьте этот IPv4-адрес:" "Paste that IPv4 address here:")"
   write_env WINDOWS_LAN_IP "$WINDOWS_LAN_IP"
   LAN_IP="$WINDOWS_LAN_IP"
 fi
 
-step "Windows Firewall may block incoming connections on port 7860 from other devices."
-note "If the check below fails, allow it: Windows Security → Firewall & network protection →"
-note "  Allow an app through firewall → Allow another app → browse to python.exe in the venv, or"
-note "  simplest: create an inbound rule for TCP port 7860 in 'Windows Defender Firewall with Advanced Security'."
-confirm "Is this a HOME network (not a public/office one)? --listen has no login, so only do this on a trusted network." \
-  || warn "Consider not exposing --listen on this network, or restrict it with a firewall rule to your Mac's IP only."
+step "$(t "Windows Firewall может блокировать входящие подключения на порт 7860 с других устройств." \
+          "Windows Firewall may block incoming connections on port 7860 from other devices.")"
+note "$(t "Если проверка ниже не пройдёт: Безопасность Windows → Брандмауэр и защита сети →" \
+          "If the check below fails, allow it: Windows Security → Firewall & network protection →")"
+note "$(t "  Разрешить приложение через брандмауэр → Разрешить другое приложение → указать python.exe в venv, либо" \
+          "  Allow an app through firewall → Allow another app → browse to python.exe in the venv, or")"
+note "$(t "  проще всего — создать правило для входящих подключений на TCP порт 7860 в 'Брандмауэр Windows в режиме повышенной безопасности'." \
+          "  simplest: create an inbound rule for TCP port 7860 in 'Windows Defender Firewall with Advanced Security'.")"
+confirm "$(t "Это ДОМАШНЯЯ сеть (не публичная/офисная)? У --listen нет пароля, включайте это только в доверенной сети." \
+             "Is this a HOME network (not a public/office one)? --listen has no login, so only do this on a trusted network.")" \
+  || warn "$(t "Подумайте о том, чтобы не открывать --listen в этой сети, либо ограничить доступ правилом файрвола только для IP вашего Mac." \
+               "Consider not exposing --listen on this network, or restrict it with a firewall rule to your Mac's IP only.")"
 
 if command -v curl >/dev/null 2>&1; then
   if curl -s -o /dev/null -w '%{http_code}' "http://localhost:7860/sdapi/v1/sd-models" | grep -q '^200$'; then
-    step "API reachable locally at http://localhost:7860 ✓"
+    step "$(t "API доступен локально на http://localhost:7860 ✓" "API reachable locally at http://localhost:7860 ✓")"
   else
-    warn "Couldn't reach http://localhost:7860/sdapi/v1/sd-models — check the WebUI console for errors and confirm --api is in COMMANDLINE_ARGS."
+    warn "$(t "Не удалось достучаться до http://localhost:7860/sdapi/v1/sd-models — проверьте консоль WebUI на ошибки и убедитесь что --api указан в COMMANDLINE_ARGS." \
+              "Couldn't reach http://localhost:7860/sdapi/v1/sd-models — check the WebUI console for errors and confirm --api is in COMMANDLINE_ARGS.")"
   fi
   if [[ -n "$LAN_IP" ]] && curl -s -o /dev/null -w '%{http_code}' "http://$LAN_IP:7860/sdapi/v1/sd-models" | grep -q '^200$'; then
-    step "API also reachable over the network at http://$LAN_IP:7860 ✓ — this is what you'll enter on the Mac."
+    step "$(t "API также доступен по сети на http://$LAN_IP:7860 ✓ — именно этот адрес нужно ввести на Mac." \
+              "API also reachable over the network at http://$LAN_IP:7860 ✓ — this is what you'll enter on the Mac.")"
   else
-    warn "Not reachable at http://$LAN_IP:7860 from here yet — that's OK if you're testing from the Windows PC itself; the real test is from the Mac (next stage)."
+    warn "$(t "Пока недоступен по http://$LAN_IP:7860 отсюда — это нормально, если вы проверяете с самого Windows-ПК; настоящая проверка — с Mac (следующий шаг)." \
+              "Not reachable at http://$LAN_IP:7860 from here yet — that's OK if you're testing from the Windows PC itself; the real test is from the Mac (next stage).")"
   fi
 else
-  warn "curl not found — open http://localhost:7860 in a browser to confirm the WebUI is up."
+  warn "$(t "curl не найден — откройте http://localhost:7860 в браузере, чтобы убедиться что WebUI запущен." \
+            "curl not found — open http://localhost:7860 in a browser to confirm the WebUI is up.")"
 fi
 
 # ── Stage 7: End-to-end test through PixelForge ────────────────────────────
-stage "Test generation through PixelForge"
-say "PixelForge might run on THIS Windows PC, or on another device (e.g. a Mac) on the same network."
-say "Either way, in PixelForge's left panel there's now an 'Адрес Stable Diffusion' field:"
-step "On THIS Windows PC:            http://localhost:7860"
-step "On another device (Mac, etc.): http://$LAN_IP:7860"
-note "Paste the right one in, then click 'Проверить' — the dot should turn green."
+stage "$(t "Проверка генерации через PixelForge" "Test generation through PixelForge")"
+say "$(t "PixelForge может работать на ЭТОМ Windows-ПК, либо на другом устройстве (например, Mac) в той же сети." \
+         "PixelForge might run on THIS Windows PC, or on another device (e.g. a Mac) on the same network.")"
+say "$(t "В любом случае в левой панели PixelForge есть поле 'Адрес Stable Diffusion':" \
+         "Either way, in PixelForge's left panel there's now an 'Адрес Stable Diffusion' field:")"
+step "$(t "На ЭТОМ Windows-ПК:            http://localhost:7860" "On THIS Windows PC:            http://localhost:7860")"
+step "$(t "На другом устройстве (Mac...): http://$LAN_IP:7860" "On another device (Mac, etc.): http://$LAN_IP:7860")"
+note "$(t "Вставьте нужный адрес и нажмите 'Проверить' — точка должна стать зелёной." "Paste the right one in, then click 'Проверить' — the dot should turn green.")"
 
-ask PIXELFORGE_DIR "Path to the pixel-forge project folder ON THIS PC (leave empty if PixelForge runs on another device):"
+ask PIXELFORGE_DIR "$(t "Путь к папке проекта pixel-forge НА ЭТОМ ПК (оставьте пустым, если PixelForge на другом устройстве):" \
+                        "Path to the pixel-forge project folder ON THIS PC (leave empty if PixelForge runs on another device):")"
 PIXELFORGE_DIR="${PIXELFORGE_DIR/#\~/$HOME}"
 write_env PIXELFORGE_DIR "$PIXELFORGE_DIR"
 
 if [[ -n "$PIXELFORGE_DIR" && -d "$PIXELFORGE_DIR" ]]; then
-  step "Found project at $PIXELFORGE_DIR"
+  step "$(t "Найден проект в $PIXELFORGE_DIR" "Found project at $PIXELFORGE_DIR")"
   if [[ ! -d "$PIXELFORGE_DIR/node_modules" ]]; then
-    note "node_modules missing — running npm install first."
+    note "$(t "node_modules отсутствует — сначала выполняю npm install." "node_modules missing — running npm install first.")"
     (cd "$PIXELFORGE_DIR" && npm install)
   fi
-  say "Launching the app itself is manual: run this yourself so you can see the window."
-  step "In a terminal: cd \"$PIXELFORGE_DIR\" && npm start"
+  say "$(t "Запуск самого приложения — вручную: выполните это сами, чтобы увидеть окно." \
+           "Launching the app itself is manual: run this yourself so you can see the window.")"
+  step "$(t "В терминале: cd \"$PIXELFORGE_DIR\" && npm start" "In a terminal: cd \"$PIXELFORGE_DIR\" && npm start")"
 elif [[ -n "$PIXELFORGE_DIR" ]]; then
-  warn "Path not found: $PIXELFORGE_DIR"
+  warn "$(t "Путь не найден: $PIXELFORGE_DIR" "Path not found: $PIXELFORGE_DIR")"
 else
-  say "OK — go to the OTHER device, open PixelForge, and set the address field to http://$LAN_IP:7860"
+  say "$(t "Хорошо — перейдите на ДРУГОЕ устройство, откройте PixelForge и укажите в поле адреса http://$LAN_IP:7860" \
+           "OK — go to the OTHER device, open PixelForge, and set the address field to http://$LAN_IP:7860")"
 fi
 
-step "In the app: switch mode to 'Stable Diffusion', paste the right server address, click 'Проверить' (dot should go green)."
-step "Type a description (e.g. 'дерево дуб осенью, вид сбоку'), pick 32x32, click СГЕНЕРИРОВАТЬ (or Ctrl+Enter)."
-pause "Press Enter once you've done that and are ready to confirm."
-confirm "Did a sprite appear in the center panel?" \
-  && step "🎉 End-to-end works: PixelForge → AUTOMATIC1111 → sprite." \
-  || warn "If it failed: check the connection dot's error text in PixelForge, the WebUI console for the incoming request, and that Windows Firewall allows port 7860 if testing from another device."
+step "$(t "В приложении: переключитесь на режим 'Stable Diffusion', вставьте нужный адрес сервера, нажмите 'Проверить' (точка должна стать зелёной)." \
+          "In the app: switch mode to 'Stable Diffusion', paste the right server address, click 'Проверить' (dot should go green).")"
+step "$(t "Введите описание (например 'дерево дуб осенью, вид сбоку'), выберите 32x32, нажмите СГЕНЕРИРОВАТЬ (или Ctrl+Enter)." \
+          "Type a description (e.g. 'дерево дуб осенью, вид сбоку'), pick 32x32, click СГЕНЕРИРОВАТЬ (or Ctrl+Enter).")"
+pause "$(t "Нажмите Enter, когда сделаете это и будете готовы подтвердить." "Press Enter once you've done that and are ready to confirm.")"
+confirm "$(t "Появился ли спрайт в центральной панели?" "Did a sprite appear in the center panel?")" \
+  && step "$(t "🎉 Всё работает: PixelForge → AUTOMATIC1111 → спрайт." "🎉 End-to-end works: PixelForge → AUTOMATIC1111 → sprite.")" \
+  || warn "$(t "Если не сработало: проверьте текст ошибки у индикатора подключения в PixelForge, консоль WebUI на входящий запрос, и что Windows Firewall разрешает порт 7860 при проверке с другого устройства." \
+               "If it failed: check the connection dot's error text in PixelForge, the WebUI console for the incoming request, and that Windows Firewall allows port 7860 if testing from another device.")"
 
 finish
