@@ -322,9 +322,6 @@ if [[ -f "$WEBUI_USER_BAT" ]]; then
               "Pinned PYTHON=$PYTHON_310 in webui-user.bat (so it uses 3.10 even if another Python is on PATH).")"
   fi
 
-  set_bat_var "PIP_NO_BUILD_ISOLATION" "1" "$WEBUI_USER_BAT"
-  step "$(t "Включён PIP_NO_BUILD_ISOLATION=1 (нужно для следующего фикса — см. ниже)." \
-            "Enabled PIP_NO_BUILD_ISOLATION=1 (needed for the next fix below).")"
 else
   warn "$(t "webui-user.bat не найден в $WEBUI_USER_BAT — добавьте туда 'set COMMANDLINE_ARGS=--api --xformers --listen' вручную." \
             "webui-user.bat not found at $WEBUI_USER_BAT — add 'set COMMANDLINE_ARGS=--api --xformers --listen' to it by hand.")"
@@ -333,10 +330,17 @@ fi
 # Known upstream issue (since Feb 2026): setuptools 82+ dropped pkg_resources,
 # which legacy git-installed packages (openai/CLIP, open_clip, etc.) still
 # import at build time, so "Couldn't install clip" / "No module named
-# pkg_resources" happens on a fresh install. Fix: pin an old setuptools in the
-# venv and disable pip build isolation (PIP_NO_BUILD_ISOLATION=1 above) so the
-# build uses that pinned version instead of fetching a fresh broken one.
+# pkg_resources" happens on a fresh install.
 # https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17276
+#
+# Fix has two parts:
+#  1. Pin an old setuptools (69.5.1) in the venv.
+#  2. Patch launch_utils.py so its pip install calls for these packages pass
+#     --no-build-isolation, so they use that pinned setuptools instead of a
+#     fresh one pip would otherwise fetch into a throwaway build environment.
+#     (A PIP_NO_BUILD_ISOLATION=1 env var does NOT reliably do this — pip
+#     does not expose --no-build-isolation as a settable env var, confirmed
+#     by users still hitting the isolated-build-env error with it set.)
 if [[ -n "${PYTHON_310:-}" ]]; then
   VENV_DIR="$SD_INSTALL_DIR/venv"
   if [[ ! -d "$VENV_DIR" ]]; then
@@ -349,8 +353,20 @@ if [[ -n "${PYTHON_310:-}" ]]; then
               "Pinning setuptools==69.5.1 in the venv (fixes 'No module named pkg_resources' when installing CLIP)...")"
     "$VENV_PYTHON" -m pip install --quiet --upgrade pip 2>/dev/null || true
     "$VENV_PYTHON" -m pip install --quiet "setuptools==69.5.1" wheel 2>/dev/null || true
-    note "$(t "Если venv ещё не создался (см. выше), просто запустите webui-user.bat один раз и это сработает автоматически при первом запуске, а не сейчас." \
-              "If the venv wasn't created yet (see above), just run webui-user.bat once and this will happen automatically on first launch instead of now.")"
+  else
+    note "$(t "venv ещё не создан — этот шаг применится автоматически при следующем запуске мастера, после первого запуска webui-user.bat." \
+              "venv doesn't exist yet — this step will apply automatically the next time you run this wizard, after webui-user.bat has run once.")"
+  fi
+fi
+
+LAUNCH_UTILS="$SD_INSTALL_DIR/modules/launch_utils.py"
+if [[ -f "$LAUNCH_UTILS" ]] && grep -qE 'run_pip\(f"install \{[A-Za-z_]+\}", "' "$LAUNCH_UTILS" 2>/dev/null; then
+  if ! grep -q -- '--no-build-isolation' "$LAUNCH_UTILS"; then
+    sed -E -i 's/run_pip\(f"install \{([A-Za-z_]+)\}", "/run_pip(f"install {\1} --no-build-isolation", "/g' "$LAUNCH_UTILS"
+    step "$(t "Пропатчены установки CLIP/open_clip и похожих пакетов в launch_utils.py — добавлен --no-build-isolation." \
+              "Patched the CLIP/open_clip and similar package installs in launch_utils.py to add --no-build-isolation.")"
+  else
+    note "$(t "launch_utils.py уже пропатчен — пропускаю." "launch_utils.py already patched — skipping.")"
   fi
 fi
 

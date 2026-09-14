@@ -83,25 +83,24 @@ if ($content -match '^set PYTHON=') {
 } else {
   $content += "set PYTHON=$python310"
 }
-# PIP_NO_BUILD_ISOLATION: needed for the setuptools/pkg_resources fix below —
-# see step 6b. Without it, pip fetches a fresh (broken) setuptools for every
-# legacy git-based package (CLIP, open_clip, etc.) regardless of what we pin
-# in the venv.
-if ($content -match '^set PIP_NO_BUILD_ISOLATION=') {
-  $content = $content -replace '^set PIP_NO_BUILD_ISOLATION=.*', 'set PIP_NO_BUILD_ISOLATION=1'
-} else {
-  $content += "set PIP_NO_BUILD_ISOLATION=1"
-}
 $content | Set-Content $webuiUserBat
-Ok "webui-user.bat настроен: --api --xformers --listen, PYTHON=$python310, PIP_NO_BUILD_ISOLATION=1"
+Ok "webui-user.bat настроен: --api --xformers --listen, PYTHON=$python310"
 
 # ── 6a. Фикс "No module named 'pkg_resources'" при установке CLIP ─────────
 # Известный баг с февраля 2026: setuptools 82+ убрали pkg_resources, а старые
-# пакеты (openai/CLIP и похожие) всё ещё его требуют при сборке из исходников.
-# https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17276
-# Фикс: закрепить в venv старую setuptools (69.5.1) и запрещать pip создавать
-# отдельное изолированное окружение сборки (PIP_NO_BUILD_ISOLATION=1 выше) —
-# тогда сборка использует уже закреплённую версию из venv.
+# пакеты (openai/CLIP, open_clip и похожие) всё ещё его требуют при сборке из
+# исходников. https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17276
+#
+# Фикс из двух частей:
+#  1. Закрепить в venv старую setuptools (69.5.1).
+#  2. Пропатчить launch_utils.py, чтобы его pip install для этих пакетов
+#     использовал --no-build-isolation — тогда сборка берёт закреплённую
+#     версию из venv вместо свежей (сломанной), которую pip иначе скачал бы
+#     в отдельное временное окружение сборки.
+#     (Переменная окружения PIP_NO_BUILD_ISOLATION НЕ работает надёжно — pip
+#     не поддерживает --no-build-isolation как настройку через env var,
+#     подтверждено: пользователи всё равно попадают в изолированное окружение
+#     сборки даже с этой переменной выставленной.)
 $venvDir = Join-Path $InstallDir "venv"
 if (-not (Test-Path $venvDir)) {
   Step "Создаю venv (виртуальное окружение) с Python 3.10..."
@@ -115,6 +114,18 @@ if (Test-Path $venvPython) {
   Ok "setuptools закреплён на рабочей версии."
 } else {
   Warn "Не удалось создать/найти venv по пути $venvDir — AUTOMATIC1111 создаст его сам при первом запуске, но тогда может понадобиться повторно закрепить setuptools вручную, если всплывёт ошибка pkg_resources."
+}
+
+$launchUtilsForClip = Join-Path $InstallDir "modules\launch_utils.py"
+if (Test-Path $launchUtilsForClip) {
+  $luc = Get-Content $launchUtilsForClip -Raw
+  if ($luc -match 'run_pip\(f"install \{[A-Za-z_]+\}", "' -and $luc -notmatch '--no-build-isolation') {
+    $luc = [regex]::Replace($luc, 'run_pip\(f"install \{([A-Za-z_]+)\}", "', 'run_pip(f"install {$1} --no-build-isolation", "')
+    Set-Content $launchUtilsForClip $luc -NoNewline
+    Ok "Пропатчены установки CLIP/open_clip и похожих пакетов в launch_utils.py — добавлен --no-build-isolation."
+  } else {
+    Note "launch_utils.py уже пропатчен либо не требует фикса — пропускаю."
+  }
 }
 
 # ── 6b. Фикс мёртвого репозитория Stability-AI/stablediffusion (404) ───────
