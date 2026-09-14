@@ -83,10 +83,41 @@ if ($content -match '^set PYTHON=') {
 } else {
   $content += "set PYTHON=$python310"
 }
+# PIP_NO_BUILD_ISOLATION: needed for the setuptools/pkg_resources fix below —
+# see step 6b. Without it, pip fetches a fresh (broken) setuptools for every
+# legacy git-based package (CLIP, open_clip, etc.) regardless of what we pin
+# in the venv.
+if ($content -match '^set PIP_NO_BUILD_ISOLATION=') {
+  $content = $content -replace '^set PIP_NO_BUILD_ISOLATION=.*', 'set PIP_NO_BUILD_ISOLATION=1'
+} else {
+  $content += "set PIP_NO_BUILD_ISOLATION=1"
+}
 $content | Set-Content $webuiUserBat
-Ok "webui-user.bat настроен: --api --xformers --listen, PYTHON=$python310"
+Ok "webui-user.bat настроен: --api --xformers --listen, PYTHON=$python310, PIP_NO_BUILD_ISOLATION=1"
 
-# ── 6. Фикс мёртвого репозитория Stability-AI/stablediffusion (404) ───────
+# ── 6a. Фикс "No module named 'pkg_resources'" при установке CLIP ─────────
+# Известный баг с февраля 2026: setuptools 82+ убрали pkg_resources, а старые
+# пакеты (openai/CLIP и похожие) всё ещё его требуют при сборке из исходников.
+# https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17276
+# Фикс: закрепить в venv старую setuptools (69.5.1) и запрещать pip создавать
+# отдельное изолированное окружение сборки (PIP_NO_BUILD_ISOLATION=1 выше) —
+# тогда сборка использует уже закреплённую версию из venv.
+$venvDir = Join-Path $InstallDir "venv"
+if (-not (Test-Path $venvDir)) {
+  Step "Создаю venv (виртуальное окружение) с Python 3.10..."
+  & $python310 -m venv $venvDir
+}
+$venvPython = Join-Path $venvDir "Scripts\python.exe"
+if (Test-Path $venvPython) {
+  Step "Закрепляю setuptools==69.5.1 в venv (чинит ошибку 'No module named pkg_resources' при установке CLIP)..."
+  & $venvPython -m pip install --quiet --upgrade pip
+  & $venvPython -m pip install --quiet "setuptools==69.5.1" wheel
+  Ok "setuptools закреплён на рабочей версии."
+} else {
+  Warn "Не удалось создать/найти venv по пути $venvDir — AUTOMATIC1111 создаст его сам при первом запуске, но тогда может понадобиться повторно закрепить setuptools вручную, если всплывёт ошибка pkg_resources."
+}
+
+# ── 6b. Фикс мёртвого репозитория Stability-AI/stablediffusion (404) ───────
 # Известный баг апстрима AUTOMATIC1111 (Stability-AI удалили репозиторий):
 # https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17212
 $launchUtils = Join-Path $InstallDir "modules\launch_utils.py"

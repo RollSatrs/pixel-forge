@@ -299,9 +299,41 @@ if [[ -f "$WEBUI_USER_BAT" ]]; then
     step "$(t "Закреплён PYTHON=$PYTHON_310 в webui-user.bat (чтобы использовалась именно 3.10, даже если в PATH другая версия)." \
               "Pinned PYTHON=$PYTHON_310 in webui-user.bat (so it uses 3.10 even if another Python is on PATH).")"
   fi
+
+  if grep -q "^set PIP_NO_BUILD_ISOLATION=" "$WEBUI_USER_BAT"; then
+    sed -i 's/^set PIP_NO_BUILD_ISOLATION=.*/set PIP_NO_BUILD_ISOLATION=1/' "$WEBUI_USER_BAT"
+  else
+    printf '\nset PIP_NO_BUILD_ISOLATION=1\n' >> "$WEBUI_USER_BAT"
+  fi
+  step "$(t "Включён PIP_NO_BUILD_ISOLATION=1 (нужно для следующего фикса — см. ниже)." \
+            "Enabled PIP_NO_BUILD_ISOLATION=1 (needed for the next fix below).")"
 else
   warn "$(t "webui-user.bat не найден в $WEBUI_USER_BAT — добавьте туда 'set COMMANDLINE_ARGS=--api --xformers --listen' вручную." \
             "webui-user.bat not found at $WEBUI_USER_BAT — add 'set COMMANDLINE_ARGS=--api --xformers --listen' to it by hand.")"
+fi
+
+# Known upstream issue (since Feb 2026): setuptools 82+ dropped pkg_resources,
+# which legacy git-installed packages (openai/CLIP, open_clip, etc.) still
+# import at build time, so "Couldn't install clip" / "No module named
+# pkg_resources" happens on a fresh install. Fix: pin an old setuptools in the
+# venv and disable pip build isolation (PIP_NO_BUILD_ISOLATION=1 above) so the
+# build uses that pinned version instead of fetching a fresh broken one.
+# https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17276
+if [[ -n "${PYTHON_310:-}" ]]; then
+  VENV_DIR="$SD_INSTALL_DIR/venv"
+  if [[ ! -d "$VENV_DIR" ]]; then
+    step "$(t "Создаю venv с Python 3.10..." "Creating venv with Python 3.10...")"
+    "$PYTHON_310" -m venv "$VENV_DIR" 2>/dev/null || note "$(t "Не удалось создать venv отсюда — Windows-путь Python может не работать напрямую в Git Bash, AUTOMATIC1111 создаст его сам при первом запуске." "Couldn't create venv from here — a Windows Python path may not run directly under Git Bash; AUTOMATIC1111 will create it on first launch instead.")"
+  fi
+  VENV_PYTHON="$VENV_DIR/Scripts/python.exe"
+  if [[ -f "$VENV_PYTHON" ]]; then
+    step "$(t "Закрепляю setuptools==69.5.1 в venv (чинит ошибку 'No module named pkg_resources' при установке CLIP)..." \
+              "Pinning setuptools==69.5.1 in the venv (fixes 'No module named pkg_resources' when installing CLIP)...")"
+    "$VENV_PYTHON" -m pip install --quiet --upgrade pip 2>/dev/null || true
+    "$VENV_PYTHON" -m pip install --quiet "setuptools==69.5.1" wheel 2>/dev/null || true
+    note "$(t "Если venv ещё не создался (см. выше), просто запустите webui-user.bat один раз и это сработает автоматически при первом запуске, а не сейчас." \
+              "If the venv wasn't created yet (see above), just run webui-user.bat once and this will happen automatically on first launch instead of now.")"
+  fi
 fi
 
 # Known upstream issue (as of early 2026): Stability-AI deleted/hid the

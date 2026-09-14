@@ -155,6 +155,24 @@ powershell -ExecutionPolicy Bypass -File scripts\quickstart.ps1 -ModelPath "C:\�
 4. Удалите папки `repositories\stable-diffusion-stability-ai` и `venv` внутри `stable-diffusion-webui` (чтобы всё пересобралось с нуля с правильным Python и torch).
 5. Запустите `webui-user.bat` заново.
 
+### Известная проблема: `No module named 'pkg_resources'` при установке CLIP
+
+Ещё один свежий баг апстрима (с февраля 2026): библиотека `setuptools` в новых версиях убрала часть `pkg_resources`, а старый пакет `CLIP` (ставится автоматически при первом запуске) всё ещё её требует — установка падает с `Couldn't install clip`. Подтверждено разработчиками AUTOMATIC1111 в [discussion #17276](https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/17276).
+
+И `scripts/quickstart.ps1`, и `scripts/setup-stable-diffusion.sh` чинят это автоматически — закрепляют `setuptools==69.5.1` в `venv` и выставляют `PIP_NO_BUILD_ISOLATION=1`.
+
+Если ловите эту ошибку на уже существующей установке — почините вручную:
+1. В `webui-user.bat` добавьте строку:
+   ```bat
+   set PIP_NO_BUILD_ISOLATION=1
+   ```
+2. В терминале:
+   ```powershell
+   cd путь\до\stable-diffusion-webui
+   venv\Scripts\python.exe -m pip install "setuptools==69.5.1" wheel
+   ```
+3. Запустите `webui-user.bat` заново.
+
 ### Как подключить PixelForge к Windows по сети
 
 В левой панели PixelForge есть поле **"Адрес Stable Diffusion"**:
