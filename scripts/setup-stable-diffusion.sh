@@ -276,13 +276,39 @@ else
   step "$(t "Склонировано." "Cloned.")"
 fi
 
+# set_bat_var KEY VALUE FILE — upsert "set KEY=VALUE" in a .bat file:
+#  - never passes VALUE through sed's replacement text: a Windows path full of
+#    backslashes hits sed's \U/\L/\E case-conversion escapes and silently
+#    mangles itself (e.g. "C:\Users\..." losing chunks of the path). Passing
+#    the finished line through awk's ENVIRON (not -v, which also does escape
+#    processing) is byte-for-byte safe regardless of what VALUE contains.
+#  - if the key doesn't exist yet, inserts the new line BEFORE the first
+#    "call ..." line instead of appending at the end of the file — appending
+#    after "call webui.bat" would mean the variable is never actually set
+#    before the program that's supposed to read it runs.
+set_bat_var() {
+  local key="$1" value="$2" file="$3" tmp
+  tmp=$(mktemp)
+  BATVAR_LINE="set ${key}=${value}" BATVAR_KEY="$key" awk '
+    BEGIN { done = 0; line = ENVIRON["BATVAR_LINE"]; key = ENVIRON["BATVAR_KEY"] }
+    $0 ~ ("^set " key "=") {
+      print line
+      done = 1
+      next
+    }
+    /^call / && !done {
+      print line
+      done = 1
+    }
+    { print }
+    END { if (!done) print line }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
 WEBUI_USER_BAT="$SD_INSTALL_DIR/webui-user.bat"
 if [[ -f "$WEBUI_USER_BAT" ]]; then
-  if grep -q "^set COMMANDLINE_ARGS=" "$WEBUI_USER_BAT"; then
-    sed -i 's/^set COMMANDLINE_ARGS=.*/set COMMANDLINE_ARGS=--api --xformers --listen/' "$WEBUI_USER_BAT"
-  else
-    printf '\nset COMMANDLINE_ARGS=--api --xformers --listen\n' >> "$WEBUI_USER_BAT"
-  fi
+  set_bat_var "COMMANDLINE_ARGS" "--api --xformers --listen" "$WEBUI_USER_BAT"
   step "$(t "Включены --api --xformers --listen в webui-user.bat." "Enabled --api --xformers --listen in webui-user.bat.")"
   note "$(t "  --api    → без этого PixelForge вообще не сможет обратиться к серверу." "  --api    → PixelForge needs this to talk to the server at all.")"
   note "$(t "  --listen → сервер начинает отвечать другим устройствам в вашей сети, не только этому ПК (нужно, если PixelForge на другом устройстве)." \
@@ -291,20 +317,12 @@ if [[ -f "$WEBUI_USER_BAT" ]]; then
             "Security note: --listen exposes the server to your whole home network with no login. Fine on a trusted home Wi-Fi; don't do this on a public/office network.")"
 
   if [[ -n "${PYTHON_310:-}" ]]; then
-    if grep -q "^set PYTHON=" "$WEBUI_USER_BAT"; then
-      sed -i "s|^set PYTHON=.*|set PYTHON=$PYTHON_310|" "$WEBUI_USER_BAT"
-    else
-      printf '\nset PYTHON=%s\n' "$PYTHON_310" >> "$WEBUI_USER_BAT"
-    fi
+    set_bat_var "PYTHON" "$PYTHON_310" "$WEBUI_USER_BAT"
     step "$(t "Закреплён PYTHON=$PYTHON_310 в webui-user.bat (чтобы использовалась именно 3.10, даже если в PATH другая версия)." \
               "Pinned PYTHON=$PYTHON_310 in webui-user.bat (so it uses 3.10 even if another Python is on PATH).")"
   fi
 
-  if grep -q "^set PIP_NO_BUILD_ISOLATION=" "$WEBUI_USER_BAT"; then
-    sed -i 's/^set PIP_NO_BUILD_ISOLATION=.*/set PIP_NO_BUILD_ISOLATION=1/' "$WEBUI_USER_BAT"
-  else
-    printf '\nset PIP_NO_BUILD_ISOLATION=1\n' >> "$WEBUI_USER_BAT"
-  fi
+  set_bat_var "PIP_NO_BUILD_ISOLATION" "1" "$WEBUI_USER_BAT"
   step "$(t "Включён PIP_NO_BUILD_ISOLATION=1 (нужно для следующего фикса — см. ниже)." \
             "Enabled PIP_NO_BUILD_ISOLATION=1 (needed for the next fix below).")"
 else
